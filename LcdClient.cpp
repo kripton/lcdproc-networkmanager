@@ -40,23 +40,28 @@ void LcdClient::readServerResponse()
 
         } else if (line.startsWith("menuevent enter ") && (line.endsWith("_list"))) {
             // Display the WiFi networks visible to interface
-            qDebug() << "ListAndConnect(" << line.split(" ")[2].split("_")[0] << ");";
-            listAndConnect(line.split(" ")[2].split("_")[0]);
+            qDebug() << "ScanAndConnect(" << line.split(" ")[2].split("_")[0] << ");";
+            scanAndConnect(line.split(" ")[2].split("_")[0]);
 
-        } else if (line.startsWith("menuevent update ")) {
-            // Some property has been changed in the menu
-            QString interFaceName = line.split(" ")[2].split("_")[0];
-            QString optionName = line.split(" ")[2].split("_")[1];
-            QString newValue = line.split(" ")[3];
+        } else if (
+            line.startsWith("menuevent update ") ||
+            line.startsWith("menuevent select ")
+        ) {
+            // "Update" means some property has been changed in a menu
+            // Examples: "eth0_dhcp off", "eth0_ip 192.168.1.1", "eth0_prefix 24"
+            //
+            // "Select" means that an action shall be executed
+            // Examples: "wlan0_disconnect", "wlan0_list_567"
+            QStringList parts = line.replace("_", " ").split(" ");
+            QString interFaceName = parts[2];
+            QString optionName = parts[3];
+            QString newValue = "";
+            if (parts.size() == 5) {
+                newValue = parts[4];
+            }
             updateNetworkConfig(interFaceName, optionName, newValue);
             updateSubMenuEntries(interFaceName);
 
-        } else if (line.startsWith("menuevent select ")) {
-            // Some property has been changed in the menu
-            QString interFaceName = line.split(" ")[2].split("_")[0];
-            QString optionName = line.split(" ")[2].split("_")[1];
-            updateNetworkConfig(interFaceName, optionName, "");
-            updateSubMenuEntries(interFaceName);
         }
     }
 }
@@ -135,7 +140,7 @@ void LcdClient::updateNetworkConfig(QString interFaceName, QString optionName, Q
     }
 }
 
-void LcdClient::listAndConnect(QString interFaceName)
+void LcdClient::scanAndConnect(QString interFaceName)
 {
     Device::Ptr dev;
     WirelessDevice::Ptr wDev;
@@ -157,17 +162,15 @@ void LcdClient::listAndConnect(QString interFaceName)
     foreach(apPath, wDev->accessPoints()) {
         ap = new AccessPoint(apPath);
         qDebug() << "PATH:" << apPath.split("/")[5] << "SSID:" << ap->ssid();
-
+        // We are removing duplicates here
         if (!ssids.contains(ap->ssid())) {
             addMenuItem(QString("%1_list").arg(interFaceName),
                 QString("%1_list_%2").arg(interFaceName).arg(apPath.split("/")[5]),
                 QString("action \"%1\"").arg(ap->ssid()));
                 ssids.append(ap->ssid());
         }
-
         delete ap;
     }
-
     delMenuItem(QString("%1_list").arg(interFaceName), QString("%1_list_dummy").arg(interFaceName));
 
 }
@@ -284,6 +287,14 @@ void LcdClient::updateSubMenuEntries(QString interFaceName)
             addMenuItem(interFaceName, QString("%1_prefix").arg(interFaceName),
                 QString("numeric \"PrefixLn\" -minvalue \"1\" -maxvalue \"31\" -value \"%1\"")
                 .arg(prefixLength));
+        } else {
+            Dhcp4Config::Ptr dhcpCfg = dev->dhcp4Config();
+            // For info only ...
+            if (dhcpCfg->options().contains("ip_address")) {
+                addMenuItem(interFaceName, QString("%1_ipDisplay").arg(interFaceName),
+                    QString("action \"%1\"")
+                    .arg(dhcpCfg->optionValue("ip_address"), 16));
+            }
         }
 
     } else if (dev->type() == Device::Wifi) {
@@ -337,16 +348,27 @@ void LcdClient::updateSubMenuEntries(QString interFaceName)
             addMenuItem(interFaceName, QString("%1_prefix").arg(interFaceName),
                 QString("numeric \"PrefixLn\" -minvalue \"1\" -maxvalue \"31\" -value \"%1\"")
                 .arg(prefixLength));
+        } else {
+            Dhcp4Config::Ptr dhcpCfg = dev->dhcp4Config();
+            // For info only ...
+            if (dhcpCfg->options().contains("ip_address")) {
+                addMenuItem(interFaceName, QString("%1_ipDisplay").arg(interFaceName),
+                    QString("action \"%1\"")
+                    .arg(dhcpCfg->optionValue("ip_address"), 16));
+            }
         }
 
         addMenuItem(interFaceName, QString("%1_list").arg(interFaceName),
-            QString("menu \"ListAndConnect\""));
+            QString("menu \"ScanAndConnect\""));
 
         addMenuItem(QString("%1_list").arg(interFaceName), QString("%1_list_dummy").arg(interFaceName),
             QString("action \"Scanning ...\""));
 
         addMenuItem(interFaceName, QString("%1_startAP").arg(interFaceName),
             QString("menu \"Start NEW AP\""));
+
+        addMenuItem(QString("%1_startAP").arg(interFaceName), QString("%1_startAP_dummy").arg(interFaceName),
+            QString("action \"StartAP\""));
     }
 
     delMenuItem(interFaceName, QString("%1_dummy").arg(interFaceName));

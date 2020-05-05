@@ -48,7 +48,7 @@ private:
     void updateNetworkConfig(QString interFaceName, QString optionName, QString newValue);
     void updateMainMenuEntries();
     void updateSubMenuEntries(QString interFaceName);
-    void listAndConnect(QString interFaceName);
+    void scanAndConnect(QString interFaceName);
 
     void addMenuItem(QString parent, QString newId, QString rest);
     void delMenuItem(QString parent, QString id);
