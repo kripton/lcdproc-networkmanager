@@ -135,6 +135,11 @@ void LcdClient::updateNetworkConfig(QString interFaceName, QString optionName, Q
             reply = dev->disconnectInterface();
             reply.waitForFinished();
             qDebug() << reply.isValid() << reply.error();
+
+        } else if ((optionName == "list") && (newValue != "")) {
+            // A WiFi network has been selected from the list of available networks
+            // => the user will now have to enter the details and then CONNECT
+
         }
 
     }
@@ -239,6 +244,7 @@ void LcdClient::updateSubMenuEntries(QString interFaceName)
 {
     Device::Ptr dev;
     WirelessDevice::Ptr wDev;
+    ActiveConnection::Ptr activeCon;
     Connection::Ptr con;
     ConnectionSettings::Ptr settings;
     WirelessSetting::Ptr wSettings;
@@ -306,55 +312,58 @@ void LcdClient::updateSubMenuEntries(QString interFaceName)
         //  Connect -> SSID LIST
         //  Start AP
         wDev = dev.dynamicCast<WirelessDevice>();
-        con = wDev->activeConnection()->connection();
-        qDebug() << "wDev:" << wDev << "CON:" << con;
-        settings = con->settings();
-        qDebug() << "Settings:" << settings;
-        //wSettings = WirelessSetting::Ptr(settings);
-        //qDebug() << "wSettings SSID" << QString::fromUtf8(wSettings->ssid());
+        activeCon = wDev->activeConnection();
+        qDebug() << "wDev:" << wDev << "ActiveCon:" << activeCon;
 
-        addMenuItem(interFaceName, QString("%1_ssid").arg(interFaceName),
-            QString("action \"SSID:%1\"")
-            .arg(wDev->activeAccessPoint()->ssid()));
+        if (!activeCon.isNull()) {
+            settings = con->settings();
+            qDebug() << "Settings:" << settings;
+            //wSettings = WirelessSetting::Ptr(settings);
+            //qDebug() << "wSettings SSID" << QString::fromUtf8(wSettings->ssid());
 
-        addMenuItem(interFaceName, QString("%1_disconnect").arg(interFaceName),
-            QString("action \"Disconnect\" -menu_result close"));
+            addMenuItem(interFaceName, QString("%1_ssid").arg(interFaceName),
+                QString("action \"SSID:%1\"")
+                .arg(wDev->activeAccessPoint()->ssid()));
 
-        Ipv4Setting::Ptr ipv4Setting = settings->setting(Setting::Ipv4).dynamicCast<Ipv4Setting>();
-        QString dhcp = "off";
-        if (ipv4Setting->method() == Ipv4Setting::Automatic) {
-            dhcp = "on";
-        }
+            addMenuItem(interFaceName, QString("%1_disconnect").arg(interFaceName),
+                QString("action \"Disconnect\" -menu_result close"));
 
-        addMenuItem(interFaceName, QString("%1_dhcp").arg(interFaceName),
-            QString("checkbox \"DHCP\" -value %1")
-            .arg(dhcp));
-
-        if (dhcp == "off") {
-            // TODO? We assume that there is one IPv4 address per connection
-            QHostAddress ip = QHostAddress("192.168.123.234");
-            int prefixLength = 24;
-            QHostAddress netmask = QHostAddress("255.255.255.0");
-            if (ipv4Setting->addresses().size()) {
-                ip.setAddress(ipv4Setting->addresses()[0].ip().toString());
-                prefixLength = ipv4Setting->addresses()[0].prefixLength();
+            Ipv4Setting::Ptr ipv4Setting = settings->setting(Setting::Ipv4).dynamicCast<Ipv4Setting>();
+            QString dhcp = "off";
+            if (ipv4Setting->method() == Ipv4Setting::Automatic) {
+                dhcp = "on";
             }
-            qDebug() << "IP:" << ip << "prefixLength:" << prefixLength;
 
-            addMenuItem(interFaceName, QString("%1_ip").arg(interFaceName),
-                QString("ip \"IP\" -value \"%1\"")
-                .arg(ip.toString()));
+            addMenuItem(interFaceName, QString("%1_dhcp").arg(interFaceName),
+                QString("checkbox \"DHCP\" -value %1")
+                .arg(dhcp));
 
-            addMenuItem(interFaceName, QString("%1_prefix").arg(interFaceName),
-                QString("numeric \"PrefixLn\" -minvalue \"1\" -maxvalue \"31\" -value \"%1\"")
-                .arg(prefixLength));
-        } else {
-            Dhcp4Config::Ptr dhcpCfg = dev->dhcp4Config();
-            // For info only ...
-            if (dhcpCfg->options().contains("ip_address")) {
-                addMenuItem(interFaceName, QString("%1_ipDisplay").arg(interFaceName),
-                    QString("action \"%1\"")
-                    .arg(dhcpCfg->optionValue("ip_address"), 16));
+            if (dhcp == "off") {
+                // TODO? We assume that there is one IPv4 address per connection
+                QHostAddress ip = QHostAddress("192.168.123.234");
+                int prefixLength = 24;
+                QHostAddress netmask = QHostAddress("255.255.255.0");
+                if (ipv4Setting->addresses().size()) {
+                    ip.setAddress(ipv4Setting->addresses()[0].ip().toString());
+                    prefixLength = ipv4Setting->addresses()[0].prefixLength();
+                }
+                qDebug() << "IP:" << ip << "prefixLength:" << prefixLength;
+
+                addMenuItem(interFaceName, QString("%1_ip").arg(interFaceName),
+                    QString("ip \"IP\" -value \"%1\"")
+                    .arg(ip.toString()));
+
+                addMenuItem(interFaceName, QString("%1_prefix").arg(interFaceName),
+                    QString("numeric \"PrefixLn\" -minvalue \"1\" -maxvalue \"31\" -value \"%1\"")
+                    .arg(prefixLength));
+            } else {
+                Dhcp4Config::Ptr dhcpCfg = dev->dhcp4Config();
+                // For info only ...
+                if (dhcpCfg->options().contains("ip_address")) {
+                    addMenuItem(interFaceName, QString("%1_ipDisplay").arg(interFaceName),
+                        QString("action \"%1\"")
+                        .arg(dhcpCfg->optionValue("ip_address"), 16));
+                }
             }
         }
 
