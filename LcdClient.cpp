@@ -81,6 +81,12 @@ void LcdClient::updateNetworkConfig(QString interfaceName, QString optionName, Q
 
     dev = findInterfaceByName(interfaceName);
 
+    // Bring the user to the interface's menu entry in order to watch the progress
+    // since the main menu is auto-updated
+    lcdSocket.write(QString("menu_goto \"%1\"\n")
+        .arg(interfaceName)
+        .toLatin1());
+
     if (dev->type() == Device::Ethernet) {
         con = getOrCreateEthernetConection(interfaceName);
         settings = con->settings();
@@ -178,10 +184,39 @@ void LcdClient::scanAndConnect(QString interfaceName)
         qDebug() << "PATH:" << apPath.split("/")[5] << "SSID:" << ap->ssid();
         // We are removing duplicates here
         if (!ssids.contains(ap->ssid())) {
-            addMenuItem(QString("%1_list").arg(interfaceName),
+            ssids.append(ap->ssid());
+
+            // The list entry itself as a menu
+            addMenuItem(
+                QString("%1_list").arg(interfaceName),
                 QString("%1_list_%2").arg(interfaceName).arg(apPath.split("/")[5]),
-                QString("action \"%1\"").arg(ap->ssid()));
-                ssids.append(ap->ssid());
+                QString("menu \"%1\"").arg(ap->ssid()));
+
+            // The network's passphrase/key
+            addMenuItem(
+                QString("%1_list_%2").arg(interfaceName).arg(apPath.split("/")[5]),
+                QString("%1_list_%2_pass").arg(interfaceName).arg(apPath.split("/")[5]),
+                "alpha \"Password\" -value \"\" -minlength 8 -maxlength 32 -allow_caps true -allow_noncaps true -allow_numbers true -allowed_extra \"!§$%&/()=@\"");
+
+            // IPv4 settings
+            addMenuItem(
+                QString("%1_list_%2").arg(interfaceName).arg(apPath.split("/")[5]),
+                QString("%1_list_%2_dhcp").arg(interfaceName).arg(apPath.split("/")[5]),
+                "checkbox \"DHCP\" -value on");
+            addMenuItem(
+                QString("%1_list_%2").arg(interfaceName).arg(apPath.split("/")[5]),
+                QString("%1_list_%2_ip").arg(interfaceName).arg(apPath.split("/")[5]),
+                "ip \"IP\" -is_hidden true -value \"192.168.123.234\"");
+            addMenuItem(
+                QString("%1_list_%2").arg(interfaceName).arg(apPath.split("/")[5]),
+                QString("%1_list_%2_prefix").arg(interfaceName).arg(apPath.split("/")[5]),
+                "numeric \"PrefixLn\" -is_hidden true -minvalue \"1\" -maxvalue \"31\" -value \"24\"");
+
+            // The "CONNECT" button
+            addMenuItem(
+                QString("%1_list_%2").arg(interfaceName).arg(apPath.split("/")[5]),
+                QString("%1_list_%2_connect").arg(interfaceName).arg(apPath.split("/")[5]),
+                "action \"CONNECT\"");
         }
         delete ap;
     }
