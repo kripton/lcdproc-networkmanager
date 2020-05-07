@@ -53,31 +53,31 @@ void LcdClient::readServerResponse()
             // "Select" means that an action shall be executed
             // Examples: "wlan0_disconnect", "wlan0_list_567"
             QStringList parts = line.replace("_", " ").split(" ");
-            QString interFaceName = parts[2];
+            QString interfaceName = parts[2];
             QString optionName = parts[3];
             QString newValue = "";
             if (parts.size() == 5) {
                 newValue = parts[4];
             }
-            updateNetworkConfig(interFaceName, optionName, newValue);
-            updateSubMenuEntries(interFaceName);
+            updateNetworkConfig(interfaceName, optionName, newValue);
+            updateSubMenuEntries(interfaceName);
 
         }
     }
 }
 
-void LcdClient::updateNetworkConfig(QString interFaceName, QString optionName, QString newValue)
+void LcdClient::updateNetworkConfig(QString interfaceName, QString optionName, QString newValue)
 {
-    qDebug() << "F:updateNetworkConfig(" << interFaceName << optionName << newValue << ")";
+    qDebug() << "F:updateNetworkConfig(" << interfaceName << optionName << newValue << ")";
     Device::Ptr dev;
     Connection::Ptr con;
     ConnectionSettings::Ptr settings;
     QDBusPendingReply<> reply;
 
-    dev = findInterfaceByName(interFaceName);
+    dev = findInterfaceByName(interfaceName);
 
     if (dev->type() == Device::Ethernet) {
-        con = getOrCreateEthernetConection(interFaceName);
+        con = getOrCreateEthernetConection(interfaceName);
         settings = con->settings();
         Ipv4Setting::Ptr ipv4Setting = settings->setting(Setting::Ipv4).dynamicCast<Ipv4Setting>();
 
@@ -93,7 +93,9 @@ void LcdClient::updateNetworkConfig(QString interFaceName, QString optionName, Q
                 }
                 ipv4Setting->setMethod(Ipv4Setting::Manual);
             } else {
+                ipv4Setting->addresses().clear();
                 ipv4Setting->setMethod(Ipv4Setting::Automatic);
+
             }
         } else if (optionName == "ip") {
             IpAddress addr;
@@ -120,7 +122,7 @@ void LcdClient::updateNetworkConfig(QString interFaceName, QString optionName, Q
             addresses.append(addr);
             ipv4Setting->setAddresses(addresses);
         }
-        qDebug() << "Connection \"" << con->path() << "\" (" << con->name() << ") on device \"" << dev->uni() << "\": Updating, saving and activating, ...";
+        qDebug() << "Connection" << con->path() << "(" << con->name() << ") on device" << dev->uni() << ": Updating, saving and activating, ...";
         reply = con->updateUnsaved(settings->toMap());
         reply.waitForFinished();
         qDebug() << reply.isValid() << reply.error();
@@ -147,16 +149,16 @@ void LcdClient::updateNetworkConfig(QString interFaceName, QString optionName, Q
     }
 }
 
-void LcdClient::scanAndConnect(QString interFaceName)
+void LcdClient::scanAndConnect(QString interfaceName)
 {
     Device::Ptr dev;
     WirelessDevice::Ptr wDev;
     QDBusPendingReply<> reply;
 
-    dev = findInterfaceByName(interFaceName);
+    dev = findInterfaceByName(interfaceName);
     wDev = dev.dynamicCast<WirelessDevice>();
 
-    emptyMenu(QString("%1_list").arg(interFaceName));
+    emptyMenu(QString("%1_list").arg(interfaceName));
 
     reply = wDev->requestScan();
     reply.waitForFinished();
@@ -171,25 +173,25 @@ void LcdClient::scanAndConnect(QString interFaceName)
         qDebug() << "PATH:" << apPath.split("/")[5] << "SSID:" << ap->ssid();
         // We are removing duplicates here
         if (!ssids.contains(ap->ssid())) {
-            addMenuItem(QString("%1_list").arg(interFaceName),
-                QString("%1_list_%2").arg(interFaceName).arg(apPath.split("/")[5]),
+            addMenuItem(QString("%1_list").arg(interfaceName),
+                QString("%1_list_%2").arg(interfaceName).arg(apPath.split("/")[5]),
                 QString("action \"%1\"").arg(ap->ssid()));
                 ssids.append(ap->ssid());
         }
         delete ap;
     }
-    delMenuItem(QString("%1_list").arg(interFaceName), QString("%1_list_dummy").arg(interFaceName));
+    delMenuItem(QString("%1_list").arg(interfaceName), QString("%1_list_dummy").arg(interfaceName));
 
 }
 
-Device::Ptr LcdClient::findInterfaceByName(QString interFaceName)
+Device::Ptr LcdClient::findInterfaceByName(QString interfaceName)
 {
     const Device::List deviceList = NetworkManager::networkInterfaces();
 
     Device::Ptr dev;
 
     foreach(dev, deviceList) {
-        if (dev->interfaceName() == interFaceName) {
+        if (dev->interfaceName() == interfaceName) {
             break;
         }
     }
@@ -201,7 +203,7 @@ Device::Ptr LcdClient::findInterfaceByName(QString interFaceName)
     return dev;
 }
 
-Connection::Ptr LcdClient::getOrCreateEthernetConection(QString interFaceName)
+Connection::Ptr LcdClient::getOrCreateEthernetConection(QString interfaceName)
 {
     Connection::Ptr con;
     const Connection::List conList = NetworkManager::listConnections();
@@ -209,7 +211,7 @@ Connection::Ptr LcdClient::getOrCreateEthernetConection(QString interFaceName)
     // There should be exactly one connection with the interface name as id
     int found = 0;
     foreach(con, conList) {
-        if (con->name() == interFaceName) {
+        if (con->name() == interfaceName) {
             found = 1;
             break;
         }
@@ -218,10 +220,10 @@ Connection::Ptr LcdClient::getOrCreateEthernetConection(QString interFaceName)
     if (!found) {
         QString uuid = QUuid::createUuid().toString().mid(1, QUuid::createUuid().toString().length() - 2);
         NetworkManager::ConnectionSettings *newConSettings = new NetworkManager::ConnectionSettings(NetworkManager::ConnectionSettings::Wired);
-        qDebug() << "Creating new connection for" << interFaceName << ":" << newConSettings;
-        newConSettings->setId(interFaceName);
+        qDebug() << "Creating new connection for" << interfaceName << ":" << newConSettings;
+        newConSettings->setId(interfaceName);
         newConSettings->setUuid(uuid);
-        newConSettings->setInterfaceName(interFaceName);
+        newConSettings->setInterfaceName(interfaceName);
         newConSettings->setAutoconnect(true);
         NetworkManager::Ipv4Setting::Ptr newIpv4Setting = newConSettings->setting(Setting::Ipv4).dynamicCast<Ipv4Setting>();
         newIpv4Setting->setMethod(NetworkManager::Ipv4Setting::Automatic);
@@ -232,7 +234,7 @@ Connection::Ptr LcdClient::getOrCreateEthernetConection(QString interFaceName)
         // Re-search for the connection now that we added it
         found = 0;
         foreach(con, conList) {
-            if (con->name() == interFaceName) {
+            if (con->name() == interfaceName) {
                 found = 1;
                 break;
             }
@@ -244,7 +246,7 @@ Connection::Ptr LcdClient::getOrCreateEthernetConection(QString interFaceName)
 
 // Update the menu items for one interface
 // Entries strongly depend on device type and connection status
-void LcdClient::updateSubMenuEntries(QString interFaceName)
+void LcdClient::updateSubMenuEntries(QString interfaceName)
 {
     Device::Ptr dev;
     WirelessDevice::Ptr wDev;
@@ -257,17 +259,17 @@ void LcdClient::updateSubMenuEntries(QString interFaceName)
     settings = QSharedPointer<ConnectionSettings>();
 
     // Add a dummy entry so one is not kicked out of the menu when emptying it
-    addMenuItem(interFaceName, QString("%1_dummy").arg(interFaceName), "action \"ERROR\"");
-    emptyMenu(interFaceName);
+    addMenuItem(interfaceName, QString("%1_dummy").arg(interfaceName), "action \"ERROR\"");
+    emptyMenu(interfaceName);
 
     // Step 1: Get the proper device entry
-    dev = findInterfaceByName(interFaceName);
+    dev = findInterfaceByName(interfaceName);
 
     // Step 2: Find the currently active settings
     //         For Ethernet devices, they will be created if not existing
     //         For WiFi, it can be NULL if not connected
     if (dev->type() == Device::Ethernet) {
-        con = getOrCreateEthernetConection(interFaceName);
+        con = getOrCreateEthernetConection(interfaceName);
 
         if (con.isNull()) {
             qDebug() << "CONNECTION STILL NOT FOUND";
@@ -286,11 +288,11 @@ void LcdClient::updateSubMenuEntries(QString interFaceName)
             settings = con->settings();
         }
 
-        addMenuItem(interFaceName, QString("%1_ssid").arg(interFaceName),
+        addMenuItem(interfaceName, QString("%1_ssid").arg(interfaceName),
             QString("action \"SSID:%1\"")
             .arg(wDev->activeAccessPoint()->ssid()));
 
-        addMenuItem(interFaceName, QString("%1_disconnect").arg(interFaceName),
+        addMenuItem(interfaceName, QString("%1_disconnect").arg(interfaceName),
             QString("action \"Disconnect\" -menu_result close"));
     }
 
@@ -302,7 +304,7 @@ void LcdClient::updateSubMenuEntries(QString interFaceName)
             dhcp = "on";
         }
 
-        addMenuItem(interFaceName, QString("%1_dhcp").arg(interFaceName),
+        addMenuItem(interfaceName, QString("%1_dhcp").arg(interfaceName),
             QString("checkbox \"DHCP\" -value %1")
             .arg(dhcp));
 
@@ -317,18 +319,18 @@ void LcdClient::updateSubMenuEntries(QString interFaceName)
             }
             qDebug() << "IP:" << ip << "prefixLength:" << prefixLength;
 
-            addMenuItem(interFaceName, QString("%1_ip").arg(interFaceName),
+            addMenuItem(interfaceName, QString("%1_ip").arg(interfaceName),
                 QString("ip \"IP\" -value \"%1\"")
                 .arg(ip.toString()));
 
-            addMenuItem(interFaceName, QString("%1_prefix").arg(interFaceName),
+            addMenuItem(interfaceName, QString("%1_prefix").arg(interfaceName),
                 QString("numeric \"PrefixLn\" -minvalue \"1\" -maxvalue \"31\" -value \"%1\"")
                 .arg(prefixLength));
         } else {
             Dhcp4Config::Ptr dhcpCfg = dev->dhcp4Config();
             // For info only ...
             if (dhcpCfg->options().contains("ip_address")) {
-                addMenuItem(interFaceName, QString("%1_ipDisplay").arg(interFaceName),
+                addMenuItem(interfaceName, QString("%1_ipDisplay").arg(interfaceName),
                     QString("action \"%1\"")
                     .arg(dhcpCfg->optionValue("ip_address"), 15));
             }
@@ -337,37 +339,33 @@ void LcdClient::updateSubMenuEntries(QString interFaceName)
 
     // Step 4: Special entries only for WiFi interfaces
     if (dev->type() == Device::Wifi) {
-        addMenuItem(interFaceName, QString("%1_list").arg(interFaceName),
+        addMenuItem(interfaceName, QString("%1_list").arg(interfaceName),
             QString("menu \"ScanAndConnect\""));
 
-        addMenuItem(QString("%1_list").arg(interFaceName), QString("%1_list_dummy").arg(interFaceName),
+        addMenuItem(QString("%1_list").arg(interfaceName), QString("%1_list_dummy").arg(interfaceName),
             QString("action \"Scanning ...\""));
 
-        addMenuItem(interFaceName, QString("%1_startAP").arg(interFaceName),
+        addMenuItem(interfaceName, QString("%1_startAP").arg(interfaceName),
             QString("menu \"Start NEW AP\""));
 
-        addMenuItem(QString("%1_startAP").arg(interFaceName), QString("%1_startAP_dummy").arg(interFaceName),
+        addMenuItem(QString("%1_startAP").arg(interfaceName), QString("%1_startAP_dummy").arg(interfaceName),
             QString("action \"StartAP\""));
     }
 
-    delMenuItem(interFaceName, QString("%1_dummy").arg(interFaceName));
+    delMenuItem(interfaceName, QString("%1_dummy").arg(interfaceName));
 }
 
 // Remove and re-add the main menu entries (= Network interfaces)
 void LcdClient::updateMainMenuEntries()
 {
+    QStringList currentInterfaces;
+    QString interfaceName;
     const Device::List deviceList = NetworkManager::networkInterfaces();
     const Connection::List conList = NetworkManager::listConnections();
-
-    // TODO: Better: Instead of removing all entries, it would be better
-    //               to update the user-visible texts
 
     // Add a dummy entry to the menu in order to not
     // have an empty client menu that would kick the user out of it
     addMenuItem("", "_dummy", "action \"No interfaces :(\"");
-
-    // Remove all interfaces from the menu
-    emptyMenu("");
 
     // To have the string representation of Device::State
     QMetaEnum metaEnum = QMetaEnum::fromType<Device::State>();
@@ -382,13 +380,33 @@ void LcdClient::updateMainMenuEntries()
             continue;
         }
 
-        addMenuItem("", dev->interfaceName(), QString("menu \"%1(%2)\"\n")
-            .arg(dev->interfaceName())
-            .arg(metaEnum.valueToKey(dev->state()))
-            .toLatin1());
+        interfaceName = dev->interfaceName();
+
+        // If the entry is already in the menu, simply update it
+        if (menuEntries["_"].contains(interfaceName)) {
+            lcdSocket.write(QString("menu_set_item \"\" \"%1\" -text \"%1(%2)\"\n")
+                .arg(interfaceName)
+                .arg(metaEnum.valueToKey(dev->state()))
+                .toLatin1());
+        } else {
+            currentInterfaces.append(interfaceName);
+            addMenuItem("", interfaceName, QString("menu \"%1(%2)\"\n")
+                .arg(interfaceName)
+                .arg(metaEnum.valueToKey(dev->state()))
+                .toLatin1());
+        }
     }
 
-    // Remove the DUMMY entry again IF there are any. Otherwise,
+    // Remove all interfaces from the menu, that are not in currentInterfaces
+    // (if an interface dissappeared since the last call to this function)
+    QString entry;
+    foreach(entry, menuEntries["_"]) {
+        if ((entry != "_dummy") && (!currentInterfaces.contains(entry))) {
+            delMenuItem("", entry);
+        }
+    }
+
+    // Remove the DUMMY entry again IF there are any interfaces. Otherwise,
     // leave it there as a hint to the user
     if (menuEntries["_"].size()) {
         delMenuItem("", "_dummy");

@@ -5,7 +5,6 @@
 
 #include <QTcpSocket>
 #include <QHash>
-#include <QProcess>
 
 
 #include <NetworkManagerQt/GenericTypes>
@@ -43,12 +42,12 @@ private:
 
     QMap<QString, QStringList> menuEntries;
 
-    Device::Ptr findInterfaceByName(QString interFaceName);
-    Connection::Ptr getOrCreateEthernetConection(QString interFaceName);
-    void updateNetworkConfig(QString interFaceName, QString optionName, QString newValue);
+    Device::Ptr findInterfaceByName(QString interfaceName);
+    Connection::Ptr getOrCreateEthernetConection(QString interfaceName);
+    void updateNetworkConfig(QString interfaceName, QString optionName, QString newValue);
     void updateMainMenuEntries();
-    void updateSubMenuEntries(QString interFaceName);
-    void scanAndConnect(QString interFaceName);
+    void updateSubMenuEntries(QString interfaceName);
+    void scanAndConnect(QString interfaceName);
 
     void addMenuItem(QString parent, QString newId, QString rest);
     void delMenuItem(QString parent, QString id);
