@@ -120,6 +120,7 @@ void LcdClient::updateNetworkConfig(QString interFaceName, QString optionName, Q
             addresses.append(addr);
             ipv4Setting->setAddresses(addresses);
         }
+        qDebug() << "Connection \"" << con->path() << "\" (" << con->name() << ") on device \"" << dev->uni() << "\": Updating, saving and activating, ...";
         reply = con->updateUnsaved(settings->toMap());
         reply.waitForFinished();
         qDebug() << reply.isValid() << reply.error();
@@ -127,6 +128,7 @@ void LcdClient::updateNetworkConfig(QString interFaceName, QString optionName, Q
         reply.waitForFinished();
         qDebug() << reply.isValid() << reply.error();
         reply = activateConnection(con->path(), dev->uni(), "");
+        reply.waitForFinished();
         qDebug() << reply.isValid() << reply.error();
 
     } else if (dev->type() == Device::Wifi) {
@@ -328,7 +330,7 @@ void LcdClient::updateSubMenuEntries(QString interFaceName)
             if (dhcpCfg->options().contains("ip_address")) {
                 addMenuItem(interFaceName, QString("%1_ipDisplay").arg(interFaceName),
                     QString("action \"%1\"")
-                    .arg(dhcpCfg->optionValue("ip_address"), 16));
+                    .arg(dhcpCfg->optionValue("ip_address"), 15));
             }
         }
     }
