@@ -370,6 +370,8 @@ void LcdClient::updateMainMenuEntries()
     // To have the string representation of Device::State
     QMetaEnum metaEnum = QMetaEnum::fromType<Device::State>();
 
+    currentInterfaces.clear();
+
     // Filter the ones that are of interest here
     // and add them to our client's menu
     for (Device::Ptr dev : deviceList) {
@@ -384,6 +386,7 @@ void LcdClient::updateMainMenuEntries()
 
         // If the entry is already in the menu, simply update it
         if (menuEntries["_"].contains(interfaceName)) {
+            currentInterfaces.append(interfaceName);
             lcdSocket.write(QString("menu_set_item \"\" \"%1\" -text \"%1(%2)\"\n")
                 .arg(interfaceName)
                 .arg(metaEnum.valueToKey(dev->state()))
