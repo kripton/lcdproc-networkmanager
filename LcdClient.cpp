@@ -53,17 +53,40 @@ void LcdClient::readServerResponse()
             line.startsWith("menuevent select ")
         ) {
             // "Update" means some property has been changed in a menu
-            // Examples: "eth0_dhcp off", "eth0_ip 192.168.1.1", "eth0_prefix 24"
+            // Examples: "eth0_dhcp off", "eth0_ip 192.168.1.1", "eth0_prefix 24", wlan0_list_1234_pass ABCDEDFG"
             //
             // "Select" means that an action shall be executed
-            // Examples: "wlan0_disconnect", "wlan0_list_567"
+            // Examples: "wlan0_disconnect"
             QStringList parts = line.replace("_", " ").split(" ");
             QString interfaceName = parts[2];
             QString optionName = parts[3];
             QString newValue = "";
-            if (parts.size() == 5) {
+
+            if ((parts.size() == 7) && (optionName == "list")) {
+                wiFiConnectOptions[parts[5]] = parts[6];
+                qDebug() << "wiFiConnectOptions" << wiFiConnectOptions;
+                if ((parts[5] == "dhcp") && (parts[6] == "on")) {
+                    lcdSocket.write(QString("menu_set_item \"\" \"%1_list_%2_ip\" -is_hidden \"true\"\n")
+                        .arg(interfaceName).arg(parts[4]).toLatin1());
+                    lcdSocket.write(QString("menu_set_item \"\" \"%1_list_%2_prefix\" -is_hidden \"true\"\n")
+                        .arg(interfaceName).arg(parts[4]).toLatin1());
+                }
+                if ((parts[5] == "dhcp") && (parts[6] == "off")) {
+                    lcdSocket.write(QString("menu_set_item \"\" \"%1_list_%2_ip\" -is_hidden \"false\"\n")
+                        .arg(interfaceName).arg(parts[4]).toLatin1());
+                    lcdSocket.write(QString("menu_set_item \"\" \"%1_list_%2_prefix\" -is_hidden \"false\"\n")
+                        .arg(interfaceName).arg(parts[4]).toLatin1());
+                }
+                return;
+
+            } else if (line.endsWith(" connect")) {
+                connectToWifi(interfaceName, parts[4]);
+                return;
+
+            } else if (parts.size() == 5) {
                 newValue = parts[4];
             }
+
             updateNetworkConfig(interfaceName, optionName, newValue);
             updateSubMenuEntries(interfaceName);
 
@@ -80,12 +103,6 @@ void LcdClient::updateNetworkConfig(QString interfaceName, QString optionName, Q
     QDBusPendingReply<> reply;
 
     dev = findInterfaceByName(interfaceName);
-
-    // Bring the user to the interface's menu entry in order to watch the progress
-    // since the main menu is auto-updated
-    lcdSocket.write(QString("menu_goto \"%1\"\n")
-        .arg(interfaceName)
-        .toLatin1());
 
     if (dev->type() == Device::Ethernet) {
         con = getOrCreateEthernetConection(interfaceName);
@@ -151,10 +168,6 @@ void LcdClient::updateNetworkConfig(QString interfaceName, QString optionName, Q
             reply.waitForFinished();
             qDebug() << reply.isValid() << reply.error();
 
-        } else if ((optionName == "list") && (newValue != "")) {
-            // A WiFi network has been selected from the list of available networks
-            // => the user will now have to enter the details and then CONNECT
-
         }
 
     }
@@ -171,9 +184,15 @@ void LcdClient::scanAndConnect(QString interfaceName)
 
     emptyMenu(QString("%1_list").arg(interfaceName));
 
+    // Clear the list of options entered for the WiFi to connect to and set defaults
+    wiFiConnectOptions.clear();
+    wiFiConnectOptions["dhcp"] = "on";
+    wiFiConnectOptions["ip"] = "192.168.123.234";
+    wiFiConnectOptions["prefix"] = "24";
+
     reply = wDev->requestScan();
     reply.waitForFinished();
-    usleep(6000000);
+    usleep(10000000);
 
     qDebug() << "WIFI LIST ENTRY:" << wDev->accessPoints();
     QString apPath;
@@ -185,6 +204,8 @@ void LcdClient::scanAndConnect(QString interfaceName)
         // We are removing duplicates here
         if (!ssids.contains(ap->ssid())) {
             ssids.append(ap->ssid());
+
+            ssidMap[apPath.split("/")[5]] = ap->ssid();
 
             // The list entry itself as a menu
             addMenuItem(
@@ -259,17 +280,17 @@ Connection::Ptr LcdClient::getOrCreateEthernetConection(QString interfaceName)
     // If not, we create one here
     if (!found) {
         QString uuid = QUuid::createUuid().toString().mid(1, QUuid::createUuid().toString().length() - 2);
-        NetworkManager::ConnectionSettings *newConSettings = new NetworkManager::ConnectionSettings(NetworkManager::ConnectionSettings::Wired);
+        ConnectionSettings *newConSettings = new ConnectionSettings(ConnectionSettings::Wired);
         qDebug() << "Creating new connection for" << interfaceName << ":" << newConSettings;
         newConSettings->setId(interfaceName);
         newConSettings->setUuid(uuid);
         newConSettings->setInterfaceName(interfaceName);
         newConSettings->setAutoconnect(true);
-        NetworkManager::Ipv4Setting::Ptr newIpv4Setting = newConSettings->setting(Setting::Ipv4).dynamicCast<Ipv4Setting>();
-        newIpv4Setting->setMethod(NetworkManager::Ipv4Setting::Automatic);
-        QDBusPendingReply<QDBusObjectPath,QDBusObjectPath> reply = NetworkManager::addConnection(newConSettings->toMap());
+        Ipv4Setting::Ptr newIpv4Setting = newConSettings->setting(Setting::Ipv4).dynamicCast<Ipv4Setting>();
+        newIpv4Setting->setMethod(Ipv4Setting::Automatic);
+        QDBusPendingReply<QDBusObjectPath,QDBusObjectPath> reply = addConnection(newConSettings->toMap());
         reply.waitForFinished();
-        // There *could* be an error but on Kiste3000 it will simply work
+        // There *could* be an error but on Kiste3000 it will magically work
         usleep(500000);
         // Re-search for the connection now that we added it
         found = 0;
@@ -282,6 +303,69 @@ Connection::Ptr LcdClient::getOrCreateEthernetConection(QString interfaceName)
     }
 
     return con;
+}
+
+// Connect to a WiFi access point
+void LcdClient::connectToWifi(QString interfaceName, QString apPath)
+{
+    // InterfaceName and last part of the AP's path is in the parameter
+    // all other options are in wiFiConnectOptions
+
+    // Check if a connection with that id already exists
+    // otherwise, create a new one
+
+    qDebug() << "connectToWifi" << interfaceName << apPath;
+    qDebug() << "SSID:" << ssidMap[apPath];
+
+    Connection::Ptr con;
+    const Connection::List conList = NetworkManager::listConnections();
+
+    // There should be exactly one connection with the ssid as id
+    int found = 0;
+    foreach(con, conList) {
+        if (con->name() == ssidMap[apPath]) {
+            found = 1;
+            break;
+        }
+    }
+    // If not, we create one here
+    if (!found) {
+        QString uuid = QUuid::createUuid().toString().mid(1, QUuid::createUuid().toString().length() - 2);
+        ConnectionSettings *newConSettings = new ConnectionSettings(ConnectionSettings::Wireless);
+        qDebug() << "Creating new connection for" << interfaceName << ":" << newConSettings;
+        newConSettings->setId(ssidMap[apPath]);
+        newConSettings->setUuid(uuid);
+        WirelessSetting::Ptr wirelessSetting = newConSettings->setting(Setting::Wireless).dynamicCast<WirelessSetting>();
+        wirelessSetting->setSsid(ssidMap[apPath]);
+        newConSettings->setInterfaceName(interfaceName);
+        newConSettings->setAutoconnect(true);
+        Ipv4Setting::Ptr newIpv4Setting = newConSettings->setting(Setting::Ipv4).dynamicCast<Ipv4Setting>();
+        // TODO: Get option and set accordingly
+        newIpv4Setting->setMethod(NetworkManager::Ipv4Setting::Automatic);
+
+        WirelessSecuritySetting::Ptr wifiSecurity = newConSettings->setting(Setting::WirelessSecurity).dynamicCast<WirelessSecuritySetting>();
+        wifiSecurity->setKeyMgmt(WirelessSecuritySetting::WpaPsk);
+        wifiSecurity->setPsk(wiFiConnectOptions["pass"]);
+        wifiSecurity->setInitialized(true);
+        wirelessSetting->setSecurity("802-11-wireless-security");
+
+        // TODO: Get device from interfaceName
+        QDBusPendingReply<QDBusObjectPath,QDBusObjectPath> reply = NetworkManager::addAndActivateConnection(newConSettings->toMap());
+        reply.waitForFinished();
+        // There *could* be an error but on Kiste3000 it will magically work
+        usleep(500000);
+        // Re-search for the connection now that we added it
+        found = 0;
+        foreach(con, conList) {
+            if (con->name() == interfaceName) {
+                found = 1;
+                break;
+            }
+        }
+    }
+
+    return con;
+
 }
 
 // Update the menu items for one interface
@@ -325,15 +409,17 @@ void LcdClient::updateSubMenuEntries(QString interfaceName)
         qDebug() << "wDev:" << wDev << "ActiveCon:" << activeCon;
 
         if (!activeCon.isNull()) {
-            settings = con->settings();
+            settings = activeCon->connection()->settings();
+
+            qDebug() << "Settings:" << settings;
+
+            addMenuItem(interfaceName, QString("%1_ssid").arg(interfaceName),
+                QString("action \"SSID:%1\"")
+                .arg(wDev->activeAccessPoint()->ssid()));
+
+            addMenuItem(interfaceName, QString("%1_disconnect").arg(interfaceName),
+                QString("action \"Disconnect\" -menu_result close"));
         }
-
-        addMenuItem(interfaceName, QString("%1_ssid").arg(interfaceName),
-            QString("action \"SSID:%1\"")
-            .arg(wDev->activeAccessPoint()->ssid()));
-
-        addMenuItem(interfaceName, QString("%1_disconnect").arg(interfaceName),
-            QString("action \"Disconnect\" -menu_result close"));
     }
 
     // Step 3: If we do have valid ConnectionSettings, add the IPv4 menu entries
@@ -372,7 +458,7 @@ void LcdClient::updateSubMenuEntries(QString interfaceName)
             if (dhcpCfg->options().contains("ip_address")) {
                 addMenuItem(interfaceName, QString("%1_ipDisplay").arg(interfaceName),
                     QString("action \"%1\"")
-                    .arg(dhcpCfg->optionValue("ip_address"), 15));
+                    .arg(dhcpCfg->optionValue("ip_address")));
             }
         }
     }

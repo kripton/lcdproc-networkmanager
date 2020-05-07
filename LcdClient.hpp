@@ -41,9 +41,12 @@ private:
     QTimer mainMenuRefreshTimer;
 
     QMap<QString, QStringList> menuEntries;
+    QMap<QString, QString> ssidMap;
+    QMap<QString, QString> wiFiConnectOptions;
 
     Device::Ptr findInterfaceByName(QString interfaceName);
     Connection::Ptr getOrCreateEthernetConection(QString interfaceName);
+    void connectToWifi(QString interfaceName, QString apPath);
     void updateNetworkConfig(QString interfaceName, QString optionName, QString newValue);
     void updateMainMenuEntries();
     void updateSubMenuEntries(QString interfaceName);
