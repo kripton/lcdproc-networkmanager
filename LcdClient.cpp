@@ -240,6 +240,8 @@ Connection::Ptr LcdClient::getOrCreateEthernetConection(QString interFaceName)
     return con;
 }
 
+// Update the menu items for one interface
+// Entries strongly depend on device type and connection status
 void LcdClient::updateSubMenuEntries(QString interFaceName)
 {
     Device::Ptr dev;
@@ -249,12 +251,19 @@ void LcdClient::updateSubMenuEntries(QString interFaceName)
     ConnectionSettings::Ptr settings;
     WirelessSetting::Ptr wSettings;
 
+    // Initialize as NULL
+    settings = QSharedPointer<ConnectionSettings>();
+
     // Add a dummy entry so one is not kicked out of the menu when emptying it
     addMenuItem(interFaceName, QString("%1_dummy").arg(interFaceName), "action \"ERROR\"");
     emptyMenu(interFaceName);
 
+    // Step 1: Get the proper device entry
     dev = findInterfaceByName(interFaceName);
 
+    // Step 2: Find the currently active settings
+    //         For Ethernet devices, they will be created if not existing
+    //         For WiFi, it can be NULL if not connected
     if (dev->type() == Device::Ethernet) {
         con = getOrCreateEthernetConection(interFaceName);
 
@@ -262,9 +271,29 @@ void LcdClient::updateSubMenuEntries(QString interFaceName)
             qDebug() << "CONNECTION STILL NOT FOUND";
             return;
         }
-
         settings = con->settings();
 
+    } else if (dev->type() == Device::Wifi) {
+        // IF CONNECTED: "SSID", Disconnect action, IPv4Settings for active connection
+        // IN ANY CASE: ScanAndConnect -> SSID LIST, Start NEW AP
+        wDev = dev.dynamicCast<WirelessDevice>();
+        activeCon = wDev->activeConnection();
+        qDebug() << "wDev:" << wDev << "ActiveCon:" << activeCon;
+
+        if (!activeCon.isNull()) {
+            settings = con->settings();
+        }
+
+        addMenuItem(interFaceName, QString("%1_ssid").arg(interFaceName),
+            QString("action \"SSID:%1\"")
+            .arg(wDev->activeAccessPoint()->ssid()));
+
+        addMenuItem(interFaceName, QString("%1_disconnect").arg(interFaceName),
+            QString("action \"Disconnect\" -menu_result close"));
+    }
+
+    // Step 3: If we do have valid ConnectionSettings, add the IPv4 menu entries
+    if (!settings.isNull()) {
         Ipv4Setting::Ptr ipv4Setting = settings->setting(Setting::Ipv4).dynamicCast<Ipv4Setting>();
         QString dhcp = "off";
         if (ipv4Setting->method() == Ipv4Setting::Automatic) {
@@ -302,71 +331,10 @@ void LcdClient::updateSubMenuEntries(QString interFaceName)
                     .arg(dhcpCfg->optionValue("ip_address"), 16));
             }
         }
+    }
 
-    } else if (dev->type() == Device::Wifi) {
-        // IF CONNECTED:
-        //  "SSID"
-        //  Disconnect action
-        //  IPv4Settings for active connection
-        // IN ANY CASE:
-        //  Connect -> SSID LIST
-        //  Start AP
-        wDev = dev.dynamicCast<WirelessDevice>();
-        activeCon = wDev->activeConnection();
-        qDebug() << "wDev:" << wDev << "ActiveCon:" << activeCon;
-
-        if (!activeCon.isNull()) {
-            settings = con->settings();
-            qDebug() << "Settings:" << settings;
-            //wSettings = WirelessSetting::Ptr(settings);
-            //qDebug() << "wSettings SSID" << QString::fromUtf8(wSettings->ssid());
-
-            addMenuItem(interFaceName, QString("%1_ssid").arg(interFaceName),
-                QString("action \"SSID:%1\"")
-                .arg(wDev->activeAccessPoint()->ssid()));
-
-            addMenuItem(interFaceName, QString("%1_disconnect").arg(interFaceName),
-                QString("action \"Disconnect\" -menu_result close"));
-
-            Ipv4Setting::Ptr ipv4Setting = settings->setting(Setting::Ipv4).dynamicCast<Ipv4Setting>();
-            QString dhcp = "off";
-            if (ipv4Setting->method() == Ipv4Setting::Automatic) {
-                dhcp = "on";
-            }
-
-            addMenuItem(interFaceName, QString("%1_dhcp").arg(interFaceName),
-                QString("checkbox \"DHCP\" -value %1")
-                .arg(dhcp));
-
-            if (dhcp == "off") {
-                // TODO? We assume that there is one IPv4 address per connection
-                QHostAddress ip = QHostAddress("192.168.123.234");
-                int prefixLength = 24;
-                QHostAddress netmask = QHostAddress("255.255.255.0");
-                if (ipv4Setting->addresses().size()) {
-                    ip.setAddress(ipv4Setting->addresses()[0].ip().toString());
-                    prefixLength = ipv4Setting->addresses()[0].prefixLength();
-                }
-                qDebug() << "IP:" << ip << "prefixLength:" << prefixLength;
-
-                addMenuItem(interFaceName, QString("%1_ip").arg(interFaceName),
-                    QString("ip \"IP\" -value \"%1\"")
-                    .arg(ip.toString()));
-
-                addMenuItem(interFaceName, QString("%1_prefix").arg(interFaceName),
-                    QString("numeric \"PrefixLn\" -minvalue \"1\" -maxvalue \"31\" -value \"%1\"")
-                    .arg(prefixLength));
-            } else {
-                Dhcp4Config::Ptr dhcpCfg = dev->dhcp4Config();
-                // For info only ...
-                if (dhcpCfg->options().contains("ip_address")) {
-                    addMenuItem(interFaceName, QString("%1_ipDisplay").arg(interFaceName),
-                        QString("action \"%1\"")
-                        .arg(dhcpCfg->optionValue("ip_address"), 16));
-                }
-            }
-        }
-
+    // Step 4: Special entries only for WiFi interfaces
+    if (dev->type() == Device::Wifi) {
         addMenuItem(interFaceName, QString("%1_list").arg(interFaceName),
             QString("menu \"ScanAndConnect\""));
 
