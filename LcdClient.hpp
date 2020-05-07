@@ -5,7 +5,7 @@
 
 #include <QTcpSocket>
 #include <QHash>
-
+#include <QTimer>
 
 #include <NetworkManagerQt/GenericTypes>
 #include <NetworkManagerQt/Manager>
@@ -38,7 +38,7 @@ private slots:
 
 private:
     QTcpSocket lcdSocket;
-    QProcess nmcli;
+    QTimer mainMenuRefreshTimer;
 
     QMap<QString, QStringList> menuEntries;
 

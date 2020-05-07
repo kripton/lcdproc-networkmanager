@@ -4,6 +4,8 @@
 LcdClient::LcdClient(QObject *parent)
     : QObject(parent)
 {
+    connect(&mainMenuRefreshTimer, &QTimer::timeout, this, &LcdClient::updateMainMenuEntries);
+
     connect(&lcdSocket, &QIODevice::readyRead, this, &LcdClient::readServerResponse);
     connect(&lcdSocket, QOverload<QAbstractSocket::SocketError>::of(&QAbstractSocket::error), this, &LcdClient::handleSocketError);
     lcdSocket.abort();
@@ -29,6 +31,9 @@ void LcdClient::readServerResponse()
             // Set client name
             lcdSocket.write("client_set -name Netzwerk\n");
             updateMainMenuEntries();
+
+            // Start the periodic updating of the main menu entries
+            mainMenuRefreshTimer.start(500);
 
         } else if (line == "menuevent enter _client_menu_") {
             updateMainMenuEntries();
