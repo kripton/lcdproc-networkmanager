@@ -311,6 +311,8 @@ void LcdClient::connectToWifi(QString interfaceName, QString apPath)
     // InterfaceName and last part of the AP's path is in the parameter
     // all other options are in wiFiConnectOptions
 
+    Device::Ptr dev = findInterfaceByName(interfaceName);
+
     // Check if a connection with that id already exists
     // otherwise, create a new one
 
@@ -328,44 +330,39 @@ void LcdClient::connectToWifi(QString interfaceName, QString apPath)
             break;
         }
     }
+    ConnectionSettings::Ptr settings;
     // If not, we create one here
     if (!found) {
         QString uuid = QUuid::createUuid().toString().mid(1, QUuid::createUuid().toString().length() - 2);
-        ConnectionSettings *newConSettings = new ConnectionSettings(ConnectionSettings::Wireless);
-        qDebug() << "Creating new connection for" << interfaceName << ":" << newConSettings;
-        newConSettings->setId(ssidMap[apPath]);
-        newConSettings->setUuid(uuid);
-        WirelessSetting::Ptr wirelessSetting = newConSettings->setting(Setting::Wireless).dynamicCast<WirelessSetting>();
-        wirelessSetting->setSsid(ssidMap[apPath]);
-        newConSettings->setInterfaceName(interfaceName);
-        newConSettings->setAutoconnect(true);
-        Ipv4Setting::Ptr newIpv4Setting = newConSettings->setting(Setting::Ipv4).dynamicCast<Ipv4Setting>();
-        // TODO: Get option and set accordingly
-        newIpv4Setting->setMethod(NetworkManager::Ipv4Setting::Automatic);
-
-        WirelessSecuritySetting::Ptr wifiSecurity = newConSettings->setting(Setting::WirelessSecurity).dynamicCast<WirelessSecuritySetting>();
-        wifiSecurity->setKeyMgmt(WirelessSecuritySetting::WpaPsk);
-        wifiSecurity->setPsk(wiFiConnectOptions["pass"]);
-        wifiSecurity->setInitialized(true);
-        wirelessSetting->setSecurity("802-11-wireless-security");
-
-        // TODO: Get device from interfaceName
-        QDBusPendingReply<QDBusObjectPath,QDBusObjectPath> reply = NetworkManager::addAndActivateConnection(newConSettings->toMap());
-        reply.waitForFinished();
-        // There *could* be an error but on Kiste3000 it will magically work
-        usleep(500000);
-        // Re-search for the connection now that we added it
-        found = 0;
-        foreach(con, conList) {
-            if (con->name() == interfaceName) {
-                found = 1;
-                break;
-            }
-        }
+        ConnectionSettings *settingsPtr = new ConnectionSettings(ConnectionSettings::Wireless);
+        settings = ConnectionSettings::Ptr(settingsPtr);
+        qDebug() << "Creating new connection for" << interfaceName << ":" << settings;
+        settings->setUuid(uuid);
+        settings->setId(ssidMap[apPath]);
+    } else {
+        settings = con->settings();
     }
 
-    return con;
+    WirelessSetting::Ptr wirelessSetting = settings->setting(Setting::Wireless).dynamicCast<WirelessSetting>();
+    wirelessSetting->setSsid(ssidMap[apPath].toUtf8());
+    settings->setInterfaceName(interfaceName);
+    settings->setAutoconnect(true);
 
+    WirelessSecuritySetting::Ptr wifiSecurity = settings->setting(Setting::WirelessSecurity).dynamicCast<WirelessSecuritySetting>();
+    wifiSecurity->setKeyMgmt(WirelessSecuritySetting::WpaPsk);
+    wifiSecurity->setPsk(wiFiConnectOptions["pass"]);
+    wifiSecurity->setInitialized(true);
+    wirelessSetting->setSecurity("802-11-wireless-security");
+
+    Ipv4Setting::Ptr IPv4Setting = settings->setting(Setting::Ipv4).dynamicCast<Ipv4Setting>();
+    // TODO: Get option and set accordingly instead of simply using DHCP
+    IPv4Setting->setMethod(NetworkManager::Ipv4Setting::Automatic);
+
+    if (!found) {
+        QDBusPendingReply<QDBusObjectPath,QDBusObjectPath> reply = NetworkManager::addAndActivateConnection(settings->toMap(), dev->uni(), nullptr);
+        reply.waitForFinished();
+        qDebug() << reply.isValid() << reply.error();
+    }
 }
 
 // Update the menu items for one interface
