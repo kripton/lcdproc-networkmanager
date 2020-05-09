@@ -98,6 +98,8 @@ void LcdClient::updateNetworkConfig(QString interfaceName, QString optionName, Q
 {
     qDebug() << "F:updateNetworkConfig(" << interfaceName << optionName << newValue << ")";
     Device::Ptr dev;
+    WirelessDevice::Ptr wDev;
+    ActiveConnection::Ptr activeCon;
     Connection::Ptr con;
     ConnectionSettings::Ptr settings;
     QDBusPendingReply<> reply;
@@ -106,71 +108,85 @@ void LcdClient::updateNetworkConfig(QString interfaceName, QString optionName, Q
 
     if (dev->type() == Device::Ethernet) {
         con = getOrCreateEthernetConection(interfaceName);
-        settings = con->settings();
-        Ipv4Setting::Ptr ipv4Setting = settings->setting(Setting::Ipv4).dynamicCast<Ipv4Setting>();
-
-        if (optionName == "dhcp") {
-            if (newValue == "off") {
-                if (ipv4Setting->addresses().size() == 0) {
-                    IpAddress addr;
-                    addr.setIp(QHostAddress("192.168.123.234"));
-                    addr.setNetmask(QHostAddress("255.255.255.0"));
-                    QList<IpAddress> addresses = ipv4Setting->addresses();
-                    addresses.append(addr);
-                    ipv4Setting->setAddresses(addresses);
-                }
-                ipv4Setting->setMethod(Ipv4Setting::Manual);
-            } else {
-                ipv4Setting->addresses().clear();
-                ipv4Setting->setMethod(Ipv4Setting::Automatic);
-
-            }
-        } else if (optionName == "ip") {
-            IpAddress addr;
-            if (ipv4Setting->addresses().size() == 0) {
-                addr.setPrefixLength(24);
-            } else {
-                addr = ipv4Setting->addresses()[0];
-            }
-            addr.setIp(QHostAddress(newValue));
-            QList<IpAddress> addresses = ipv4Setting->addresses();
-            addresses.clear();
-            addresses.append(addr);
-            ipv4Setting->setAddresses(addresses);
-        } else if (optionName == "prefix") {
-            IpAddress addr;
-            if (ipv4Setting->addresses().size() == 0) {
-                addr.setIp(QHostAddress("192.168.123.234"));
-            } else {
-                addr = ipv4Setting->addresses()[0];
-            }
-            addr.setPrefixLength(newValue.toInt());
-            QList<IpAddress> addresses = ipv4Setting->addresses();
-            addresses.clear();
-            addresses.append(addr);
-            ipv4Setting->setAddresses(addresses);
-        }
-        qDebug() << "Connection" << con->path() << "(" << con->name() << ") on device" << dev->uni() << ": Updating, saving and activating, ...";
-        reply = con->updateUnsaved(settings->toMap());
-        reply.waitForFinished();
-        qDebug() << reply.isValid() << reply.error();
-        reply = con->save();
-        reply.waitForFinished();
-        qDebug() << reply.isValid() << reply.error();
-        reply = activateConnection(con->path(), dev->uni(), "");
-        reply.waitForFinished();
-        qDebug() << reply.isValid() << reply.error();
-
     } else if (dev->type() == Device::Wifi) {
+        wDev = dev.dynamicCast<WirelessDevice>();
+        ActiveConnection::Ptr activeCon = wDev->activeConnection();
+        qDebug() << "wDev:" << wDev << "ActiveCon:" << activeCon;
 
-        if (optionName == "disconnect") {
-            reply = dev->disconnectInterface();
-            reply.waitForFinished();
-            qDebug() << reply.isValid() << reply.error();
-
+        if (!activeCon.isNull()) {
+            con = activeCon->connection();
         }
+    }
+
+    qDebug() << "DEV:" << dev << "Connection:" << con;
+
+    if (con.isNull()) {
+        return;
+    }
+
+    settings = con->settings();
+    Ipv4Setting::Ptr ipv4Setting = settings->setting(Setting::Ipv4).dynamicCast<Ipv4Setting>();
+
+    if (optionName == "disconnect") {
+        reply = dev->disconnectInterface();
+        reply.waitForFinished();
+        qDebug() << reply.isValid() << reply.error();
+        return; // No saving and re-activation of connection wanted => return
+
+    } else if (optionName == "dhcp") {
+        if (newValue == "off") {
+            if (ipv4Setting->addresses().size() == 0) {
+                IpAddress addr;
+                addr.setIp(QHostAddress("192.168.123.234"));
+                addr.setNetmask(QHostAddress("255.255.255.0"));
+                QList<IpAddress> addresses = ipv4Setting->addresses();
+                addresses.append(addr);
+                ipv4Setting->setAddresses(addresses);
+            }
+            ipv4Setting->setMethod(Ipv4Setting::Manual);
+        } else {
+            ipv4Setting->addresses().clear();
+            ipv4Setting->setMethod(Ipv4Setting::Automatic);
+        }
+
+    } else if (optionName == "ip") {
+        IpAddress addr;
+        if (ipv4Setting->addresses().size() == 0) {
+            addr.setPrefixLength(24);
+        } else {
+            addr = ipv4Setting->addresses()[0];
+        }
+        addr.setIp(QHostAddress(newValue));
+        QList<IpAddress> addresses = ipv4Setting->addresses();
+        addresses.clear();
+        addresses.append(addr);
+        ipv4Setting->setAddresses(addresses);
+
+    } else if (optionName == "prefix") {
+        IpAddress addr;
+        if (ipv4Setting->addresses().size() == 0) {
+            addr.setIp(QHostAddress("192.168.123.234"));
+        } else {
+            addr = ipv4Setting->addresses()[0];
+        }
+        addr.setPrefixLength(newValue.toInt());
+        QList<IpAddress> addresses = ipv4Setting->addresses();
+        addresses.clear();
+        addresses.append(addr);
+        ipv4Setting->setAddresses(addresses);
 
     }
+
+    qDebug() << "Connection" << con->path() << "(" << con->name() << ") on device" << dev->uni() << ": Updating, saving and activating, ...";
+    reply = con->updateUnsaved(settings->toMap());
+    reply.waitForFinished();
+    qDebug() << reply.isValid() << reply.error();
+    reply = con->save();
+    reply.waitForFinished();
+    qDebug() << reply.isValid() << reply.error();
+    reply = activateConnection(con->path(), dev->uni(), "");
+    reply.waitForFinished();
+    qDebug() << reply.isValid() << reply.error();
 }
 
 void LcdClient::scanAndConnect(QString interfaceName)
