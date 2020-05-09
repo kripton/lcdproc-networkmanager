@@ -354,12 +354,38 @@ void LcdClient::connectToWifi(QString interfaceName, QString apPath)
     wifiSecurity->setInitialized(true);
     wirelessSetting->setSecurity("802-11-wireless-security");
 
-    Ipv4Setting::Ptr IPv4Setting = settings->setting(Setting::Ipv4).dynamicCast<Ipv4Setting>();
-    // TODO: Get option and set accordingly instead of simply using DHCP
-    IPv4Setting->setMethod(NetworkManager::Ipv4Setting::Automatic);
+    Ipv4Setting::Ptr ipv4Setting = settings->setting(Setting::Ipv4).dynamicCast<Ipv4Setting>();
+    ipv4Setting->addresses().clear();
+    if (wiFiConnectOptions["dhcp"] == "off") {
+        IpAddress addr;
+        addr.setIp(QHostAddress(wiFiConnectOptions["ip"]));
+        addr.setPrefixLength(wiFiConnectOptions["prefix"].toInt());
+        QList<IpAddress> addresses = ipv4Setting->addresses();
+        addresses.append(addr);
+        ipv4Setting->setAddresses(addresses);
+        ipv4Setting->setMethod(Ipv4Setting::Manual);
+    } else {
+        ipv4Setting->addresses().clear();
+        ipv4Setting->setMethod(Ipv4Setting::Automatic);
+    }
 
+    lcdSocket.write(QString("menu_goto \"%1\"\n")
+        .arg(interfaceName).toLatin1());
+
+    QDBusPendingReply<> reply;
     if (!found) {
-        QDBusPendingReply<QDBusObjectPath,QDBusObjectPath> reply = NetworkManager::addAndActivateConnection(settings->toMap(), dev->uni(), nullptr);
+        reply = NetworkManager::addAndActivateConnection(settings->toMap(), dev->uni(), nullptr);
+        reply.waitForFinished();
+        qDebug() << reply.isValid() << reply.error();
+    } else {
+        qDebug() << "Connection" << con->path() << "(" << con->name() << ") on device" << dev->uni() << ": Updating, saving and activating, ...";
+        reply = con->updateUnsaved(settings->toMap());
+        reply.waitForFinished();
+        qDebug() << reply.isValid() << reply.error();
+        reply = con->save();
+        reply.waitForFinished();
+        qDebug() << reply.isValid() << reply.error();
+        reply = activateConnection(con->path(), dev->uni(), "");
         reply.waitForFinished();
         qDebug() << reply.isValid() << reply.error();
     }
