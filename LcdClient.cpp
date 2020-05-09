@@ -461,9 +461,11 @@ void LcdClient::updateSubMenuEntries(QString interfaceName)
 
             qDebug() << "Settings:" << settings;
 
-            addMenuItem(interfaceName, QString("%1_ssid").arg(interfaceName),
-                QString("action \"SSID:%1\"")
-                .arg(wDev->activeAccessPoint()->ssid()));
+            if (!wDev->activeAccessPoint().isNull()) {
+                addMenuItem(interfaceName, QString("%1_ssid").arg(interfaceName),
+                    QString("action \"SSID:%1\"")
+                   .arg(wDev->activeAccessPoint()->ssid()));
+            }
 
             addMenuItem(interfaceName, QString("%1_disconnect").arg(interfaceName),
                 QString("action \"Disconnect\" -menu_result close"));
