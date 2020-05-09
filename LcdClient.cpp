@@ -376,6 +376,8 @@ void LcdClient::connectToWifi(QString interfaceName, QString apPath)
     // So we need to add it manually
     NMVariantMapMap resultingSettings = settings->toMap();
     resultingSettings.insert(wirelessSetting->name(), wirelessSetting->toMap());
+    // IPv4 settings are also missing ...
+    resultingSettings.insert(ipv4Setting->name(), ipv4Setting->toMap());
 
     qDebug() << "New connection settings" << resultingSettings;
 
