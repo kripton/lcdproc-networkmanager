@@ -372,14 +372,21 @@ void LcdClient::connectToWifi(QString interfaceName, QString apPath)
     lcdSocket.write(QString("menu_goto \"%1\"\n")
         .arg(interfaceName).toLatin1());
 
+    // Somehow, the wirelessSettings is missing on settings->toMap()
+    // So we need to add it manually
+    NMVariantMapMap resultingSettings = settings->toMap();
+    resultingSettings.insert(wirelessSetting->name(), wirelessSetting->toMap());
+
+    qDebug() << "New connection settings" << resultingSettings;
+
     QDBusPendingReply<> reply;
     if (!found) {
-        reply = NetworkManager::addAndActivateConnection(settings->toMap(), dev->uni(), nullptr);
+        reply = NetworkManager::addAndActivateConnection(resultingSettings, dev->uni(), nullptr);
         reply.waitForFinished();
         qDebug() << reply.isValid() << reply.error();
     } else {
         qDebug() << "Connection" << con->path() << "(" << con->name() << ") on device" << dev->uni() << ": Updating, saving and activating, ...";
-        reply = con->updateUnsaved(settings->toMap());
+        reply = con->updateUnsaved(resultingSettings);
         reply.waitForFinished();
         qDebug() << reply.isValid() << reply.error();
         reply = con->save();
